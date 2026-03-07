@@ -44,6 +44,7 @@ import org.joml.Math;
 import java.util.Comparator;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
 import static com.atsuishio.superbwarfare.tools.ParticleTool.sendParticle;
@@ -279,7 +280,25 @@ public class AutoAimableEntity extends GeoVehicleEntity implements OwnableEntity
 
     // 防御类载具实体搜寻周围实体
     public Entity seekNearLivingEntity(Vec3 pos, double minAngle, double maxAngle, double minRange, double seekRange, double size) {
-        for (Entity target : this.level().getEntitiesOfClass(Entity.class, new AABB(pos, pos).inflate(seekRange), e -> true).stream().sorted(Comparator.comparingDouble(e -> e.distanceToSqr(pos))).toList()) {
+        List<Entity> candidates = this.level().getEntities(this, new AABB(pos, pos).inflate(seekRange), target -> {
+            if (target == this) return false;
+
+            double distanceToSelf = target.distanceToSqr(this);
+            if (distanceToSelf <= minRange * minRange || distanceToSelf > seekRange * seekRange) return false;
+
+            if (!canAim(pos, target, minAngle, maxAngle)) return false;
+            if (VehicleVecUtils.getSubmergedHeight(target) > target.getBbHeight()) return false;
+            if (target instanceof Player player && (player.isSpectator() || player.isCreative())) return false;
+            if (SeekTool.IN_BLACKLIST.test(target)) return false;
+
+            return (target instanceof LivingEntity living && target instanceof Enemy && living.getHealth() > 0)
+                    || isThreateningEntity(target, size, pos)
+                    || basicEnemyFilter(target);
+        });
+
+        candidates.sort(Comparator.comparingDouble(e -> e.distanceToSqr(pos)));
+
+        for (Entity target : candidates) {
             var condition = target.distanceToSqr(this) > minRange * minRange
                     && target.distanceToSqr(this) <= seekRange * seekRange
                     && canAim(pos, target, minAngle, maxAngle)

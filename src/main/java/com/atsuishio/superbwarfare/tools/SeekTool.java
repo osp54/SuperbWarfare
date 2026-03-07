@@ -30,6 +30,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 import java.util.stream.StreamSupport;
@@ -392,6 +393,8 @@ public class SeekTool {
         @NotNull
         private final Entity entity;
         private final List<Predicate<Entity>> filters = new ArrayList<>();
+        @Nullable
+        private AABB searchBox;
 
         public Builder(@NotNull Entity entity) {
             this(entity, true);
@@ -405,7 +408,7 @@ public class SeekTool {
         }
 
         public List<Entity> build() {
-            return StreamSupport.stream(EntityFindUtil.getEntities(entity.level()).getAll().spliterator(), false)
+            return getEntityStream()
                     .filter(e -> {
                         for (var f : this.filters) {
                             if (!f.test(e)) return false;
@@ -417,7 +420,7 @@ public class SeekTool {
 
         @Nullable
         public Entity buildWithClosest() {
-            return StreamSupport.stream(EntityFindUtil.getEntities(entity.level()).getAll().spliterator(), false)
+            return getEntityStream()
                     .filter(e -> {
                         for (var f : this.filters) {
                             if (!f.test(e)) return false;
@@ -430,7 +433,7 @@ public class SeekTool {
 
         @Nullable
         public Entity buildWithClosest(Vec3 pos, Vec3 vec3) {
-            return StreamSupport.stream(EntityFindUtil.getEntities(entity.level()).getAll().spliterator(), false)
+            return getEntityStream()
                     .filter(e -> {
                         for (var f : this.filters) {
                             if (!f.test(e)) return false;
@@ -447,11 +450,13 @@ public class SeekTool {
         }
 
         public Builder withinRange(double range) {
+            this.searchBox = new AABB(this.entity.getEyePosition(), this.entity.getEyePosition()).inflate(range);
             this.filters.add(e -> e.position().distanceTo(this.entity.getEyePosition()) <= range);
             return this;
         }
 
         public Builder withinRange(Vec3 vec3, double range) {
+            this.searchBox = new AABB(vec3, vec3).inflate(range);
             this.filters.add(e -> e.position().distanceTo(vec3) <= range);
             return this;
         }
@@ -596,6 +601,14 @@ public class SeekTool {
         public Builder heightRange(double min, double max) {
             this.filters.add(e -> IN_HEIGHT_RANGE.test(e, min, max));
             return this;
+        }
+
+        private Stream<Entity> getEntityStream() {
+            if (this.searchBox != null) {
+                return this.entity.level().getEntities(this.entity, this.searchBox, e -> true).stream();
+            }
+
+            return StreamSupport.stream(EntityFindUtil.getEntities(entity.level()).getAll().spliterator(), false);
         }
     }
 }
