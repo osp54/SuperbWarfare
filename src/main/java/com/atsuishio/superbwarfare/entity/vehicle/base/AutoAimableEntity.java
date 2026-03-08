@@ -169,8 +169,11 @@ public class AutoAimableEntity extends GeoVehicleEntity implements OwnableEntity
 
         double maxSeekRange = seekInfo.maxSeekRange;
         double minSeekRange = seekInfo.minSeekRange;
+        double maxSeekRangeSqr = maxSeekRange * maxSeekRange;
+        double minSeekRangeSqr = minSeekRange * minSeekRange;
         int changeTargetTime = seekInfo.changeTargetTime;
         int seekIterative = Math.max(1, seekInfo.seekIterative);
+        int validationInterval = Math.min(Math.max(1, seekIterative), 5);
         double minTargetSize = seekInfo.minTargetSize;
 
         if (this.getEnergy() < seekInfo.seekEnergyCost) return;
@@ -197,17 +200,23 @@ public class AutoAimableEntity extends GeoVehicleEntity implements OwnableEntity
 
         Entity target = EntityFindUtil.findEntity(level(), entityData.get(TARGET_UUID));
 
-        if (target != null && this.getOwner() instanceof Player player && SeekTool.NOT_IN_SMOKE.test(target)) {
+        if (target != null && this.getOwner() instanceof Player player) {
+            double distanceToTargetSqr = target.distanceToSqr(this);
             if (SeekTool.IS_INVULNERABLE.test(target)
                     || VehicleVecUtils.getSubmergedHeight(target) >= target.getBbHeight()
-                    || target.distanceTo(this) > maxSeekRange
-                    || target.distanceTo(this) < minSeekRange
+                    || distanceToTargetSqr > maxSeekRangeSqr
+                    || distanceToTargetSqr < minSeekRangeSqr
                     || target instanceof LivingEntity living && living.getHealth() <= 0
                     || target == this
                     || target instanceof TargetEntity
                     || target.isInWater()
                     || target instanceof Projectile && (target.onGround() || target.getDeltaMovement().lengthSqr() < 0.001)
             ) {
+                this.entityData.set(TARGET_UUID, "none");
+                return;
+            }
+
+            if (tickCount % validationInterval == 0 && (!SeekTool.NOT_IN_SMOKE.test(target) || !checkNoClip(target, barrelRootPos))) {
                 this.entityData.set(TARGET_UUID, "none");
                 return;
             }
@@ -234,7 +243,7 @@ public class AutoAimableEntity extends GeoVehicleEntity implements OwnableEntity
             if (entityData.get(LASER_SCALE) == 0) {
                 turretAutoAimFromVector(targetVec);
                 if (VectorTool.calculateAngle(getShootVec(weaponName, 1), targetVec) < 1) {
-                    if (checkNoClip(target, barrelRootPos) && !data.overHeat.get()) {
+                    if (!data.overHeat.get() && SeekTool.NOT_IN_SMOKE.test(target) && checkNoClip(target, barrelRootPos)) {
                         if (projectileTypeStr.equals("ray") && getEntityData().get(CHARGE_PROGRESS) == 1) {
                             if (player.level() instanceof ServerLevel) {
                                 rayShoot(player, target, data);

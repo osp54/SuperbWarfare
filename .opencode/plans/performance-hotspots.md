@@ -170,7 +170,7 @@ Find the hottest runtime paths and the biggest sources of allocation / RAM churn
 1. [x] Rewrite `AutoAimableEntity.seekNearLivingEntity(...)`
 2. [x] Remove sort and use single-pass nearest selection
 3. [x] Split cheap checks from expensive LOS / smoke / clip checks
-4. [ ] Reduce expensive reacquire frequency
+4. [x] Reduce expensive reacquire frequency
 
 ### Pass 3: Shared seek utility
 1. [x] Rewrite hottest `SeekTool` methods without streams
@@ -190,10 +190,10 @@ Find the hottest runtime paths and the biggest sources of allocation / RAM churn
 ### Pass 6: Client-side cleanup
 1. [x] Optimize lock-on / seek loops in `ClientEventHandler`
 2. [x] Cache LOS / target validation briefly where safe
-3. [ ] Audit packet send frequency for lock warnings and movement
+3. [x] Audit packet send frequency for lock warnings and movement
 
 ### Pass 7: Low-risk micro-optimizations
-1. [ ] `Mod` queue tick temporary list cleanup
+1. [x] `Mod` queue tick temporary list cleanup
 2. [x] `TraceTool` ray helpers
 3. [x] smaller vector / collection cleanup across utility classes
 

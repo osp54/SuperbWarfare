@@ -28,7 +28,6 @@ import software.bernie.geckolib.util.GeckoLibUtil;
 
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -85,8 +84,8 @@ public class Mod {
         return new ResourceLocation(MODID, path);
     }
 
-    private static final Collection<AbstractMap.SimpleEntry<Runnable, Integer>> SERVER_QUEUE = new ConcurrentLinkedQueue<>();
-    private static final Collection<AbstractMap.SimpleEntry<Runnable, Integer>> CLIENT_QUEUE = new ConcurrentLinkedQueue<>();
+    private static final ConcurrentLinkedQueue<AbstractMap.SimpleEntry<Runnable, Integer>> SERVER_QUEUE = new ConcurrentLinkedQueue<>();
+    private static final ConcurrentLinkedQueue<AbstractMap.SimpleEntry<Runnable, Integer>> CLIENT_QUEUE = new ConcurrentLinkedQueue<>();
     private static final int MAX_CLIENT_QUEUE_SIZE = 4096;
 
     public static void queueServerWork(int tick, Runnable action) {
@@ -103,28 +102,32 @@ public class Mod {
     @SubscribeEvent
     public void tick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
-            List<AbstractMap.SimpleEntry<Runnable, Integer>> actions = new ArrayList<>();
-            SERVER_QUEUE.forEach(work -> {
-                work.setValue(work.getValue() - 1);
-                if (work.getValue() == 0)
-                    actions.add(work);
-            });
-            actions.forEach(e -> e.getKey().run());
-            SERVER_QUEUE.removeAll(actions);
+            processQueue(SERVER_QUEUE);
         }
     }
 
     @SubscribeEvent
     public void tick(TickEvent.ClientTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
-            List<AbstractMap.SimpleEntry<Runnable, Integer>> actions = new ArrayList<>();
-            CLIENT_QUEUE.forEach(work -> {
-                work.setValue(work.getValue() - 1);
-                if (work.getValue() == 0)
-                    actions.add(work);
-            });
-            actions.forEach(e -> e.getKey().run());
-            CLIENT_QUEUE.removeAll(actions);
+            processQueue(CLIENT_QUEUE);
+        }
+    }
+
+    private static void processQueue(ConcurrentLinkedQueue<AbstractMap.SimpleEntry<Runnable, Integer>> queue) {
+        int queuedActions = queue.size();
+        for (int i = 0; i < queuedActions; i++) {
+            AbstractMap.SimpleEntry<Runnable, Integer> work = queue.poll();
+            if (work == null) {
+                return;
+            }
+
+            int remainingTicks = work.getValue() - 1;
+            if (remainingTicks <= 0) {
+                work.getKey().run();
+            } else {
+                work.setValue(remainingTicks);
+                queue.add(work);
+            }
         }
     }
 

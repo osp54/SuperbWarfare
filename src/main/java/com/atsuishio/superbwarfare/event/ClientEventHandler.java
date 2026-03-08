@@ -244,10 +244,30 @@ public class ClientEventHandler {
     @Nullable
     private static UUID lastVehicleSeekSource = null;
     private static int lastVehicleSeekTick = Integer.MIN_VALUE;
+    @Nullable
+    private static UUID lastSeekingWarningUuid = null;
+    private static boolean lastSeekingWarningLocked = false;
+    private static int lastSeekingWarningTick = Integer.MIN_VALUE;
 
     protected static short keysCache = 0;
 
     public static TDMSavedData tdmSavedData = new TDMSavedData();
+
+    private static void sendSeekingWarning(Player player, boolean lockOnWarning, Entity target) {
+        UUID targetUuid = target.getUUID();
+        int minInterval = lockOnWarning ? 2 : 3;
+
+        if (targetUuid.equals(lastSeekingWarningUuid)
+                && lastSeekingWarningLocked == lockOnWarning
+                && player.tickCount - lastSeekingWarningTick < minInterval) {
+            return;
+        }
+
+        NetworkRegistry.PACKET_HANDLER.sendToServer(new SeekingWeaponWarningMessage(lockOnWarning, targetUuid));
+        lastSeekingWarningUuid = targetUuid;
+        lastSeekingWarningLocked = lockOnWarning;
+        lastSeekingWarningTick = player.tickCount;
+    }
 
     @SubscribeEvent
     public static void handleWeaponTurn(RenderHandEvent event) {
@@ -524,7 +544,7 @@ public class ClientEventHandler {
                             if (nearestEntity != null && lockingPos == null) {
                                 seekingTime++;
                                 if ((!seekingEntity.getPassengers().isEmpty() || seekingEntity instanceof VehicleEntity) && player.tickCount % 3 == 0 && !lockOn) {
-                                    NetworkRegistry.PACKET_HANDLER.sendToServer(new SeekingWeaponWarningMessage(false, seekingEntity.getUUID()));
+                                    sendSeekingWarning(player, false, seekingEntity);
                                 }
                                 guideType = 0;
                             }
@@ -561,7 +581,7 @@ public class ClientEventHandler {
                         if (nearestEntity != null && data.hasEnoughAmmoToShoot(player)) {
                             seekingTime++;
                             if ((!seekingEntity.getPassengers().isEmpty() || seekingEntity instanceof VehicleEntity) && player.tickCount % 3 == 0 && !lockOn) {
-                                NetworkRegistry.PACKET_HANDLER.sendToServer(new SeekingWeaponWarningMessage(false, seekingEntity.getUUID()));
+                                sendSeekingWarning(player, false, seekingEntity);
                             }
                         }
                     } else {
@@ -592,7 +612,7 @@ public class ClientEventHandler {
             if (seekingTime > lockTime) {
                 playLockedSound(data, player);
                 if (guideType == 0 && lockingEntity != null && (!lockingEntity.getPassengers().isEmpty() || lockingEntity instanceof VehicleEntity) && player.tickCount % 2 == 0) {
-                    NetworkRegistry.PACKET_HANDLER.sendToServer(new SeekingWeaponWarningMessage(true, lockingEntity.getUUID()));
+                    sendSeekingWarning(player, true, lockingEntity);
                 }
             }
         }
@@ -684,7 +704,7 @@ public class ClientEventHandler {
                 if (nearestEntityVehicle != null && lockingPosVehicle == null) {
                     seekingTimeVehicle++;
                     if ((!seekingEntityVehicle.getPassengers().isEmpty() || seekingEntityVehicle instanceof VehicleEntity) && player.tickCount % 3 == 0 && !lockOnVehicle) {
-                        NetworkRegistry.PACKET_HANDLER.sendToServer(new SeekingWeaponWarningMessage(false, seekingEntityVehicle.getUUID()));
+                        sendSeekingWarning(player, false, seekingEntityVehicle);
                     }
                 }
             } else {
@@ -711,7 +731,7 @@ public class ClientEventHandler {
         if (seekingTimeVehicle > lockTime) {
             playLockedSound(data, player);
             if (seekWeaponInfo.onlyLockEntity && lockingEntityVehicle != null && (!lockingEntityVehicle.getPassengers().isEmpty() || lockingEntityVehicle instanceof VehicleEntity) && player.tickCount % 2 == 0) {
-                NetworkRegistry.PACKET_HANDLER.sendToServer(new SeekingWeaponWarningMessage(true, lockingEntityVehicle.getUUID()));
+                sendSeekingWarning(player, true, lockingEntityVehicle);
             }
         }
     }
@@ -729,6 +749,9 @@ public class ClientEventHandler {
         lockingPos = null;
         VehicleMainWeaponHudOverlay.lock = false;
         lastVehicleSeekTick = Integer.MIN_VALUE;
+        lastSeekingWarningUuid = null;
+        lastSeekingWarningLocked = false;
+        lastSeekingWarningTick = Integer.MIN_VALUE;
         stopVehicleSeekSound(player);
     }
 
