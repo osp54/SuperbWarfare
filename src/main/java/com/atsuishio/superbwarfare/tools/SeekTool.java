@@ -28,12 +28,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Stream;
 import java.util.function.BiPredicate;
 import java.util.function.Predicate;
-import java.util.stream.StreamSupport;
 
 import static com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity.LAST_DRIVER_UUID;
 
@@ -78,21 +75,28 @@ public class SeekTool {
 
     @Deprecated(forRemoval = true)
     public static Entity seekCustomSizeEntity(Entity entity, Level level, double seekRange, double seekAngle, double size, boolean checkOnGround) {
-        return StreamSupport.stream(EntityFindUtil.getEntities(level).getAll().spliterator(), false)
-                .filter(e -> {
-                    if (e.distanceTo(entity) <= seekRange && calculateAngle(e, entity) < seekAngle
-                            && e != entity
-                            && baseFilter(e)
-                            && (!checkOnGround || ON_GROUND_HEIGHT.test(e, 10d))
-                            && e.getBoundingBox().getSize() >= size
-                            && smokeFilter(e)
-                            && e.getVehicle() == null
-                    ) {
-                        return level.clip(new ClipContext(entity.getEyePosition(), e.getEyePosition(),
-                                ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, entity)).getType() != HitResult.Type.BLOCK;
-                    }
-                    return false;
-                }).min(Comparator.comparingDouble(e -> calculateAngle(e, entity))).orElse(null);
+        Entity nearest = null;
+        double nearestAngle = Double.MAX_VALUE;
+
+        for (Entity e : EntityFindUtil.getEntities(level).getAll()) {
+            if (e == entity) continue;
+            if (e.distanceTo(entity) > seekRange) continue;
+
+            double currentAngle = calculateAngle(e, entity);
+            if (currentAngle >= seekAngle || currentAngle >= nearestAngle) continue;
+            if (!baseFilter(e)) continue;
+            if (checkOnGround && !ON_GROUND_HEIGHT.test(e, 10d)) continue;
+            if (e.getBoundingBox().getSize() < size) continue;
+            if (!smokeFilter(e)) continue;
+            if (e.getVehicle() != null) continue;
+            if (level.clip(new ClipContext(entity.getEyePosition(), e.getEyePosition(),
+                    ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, entity)).getType() == HitResult.Type.BLOCK) continue;
+
+            nearest = e;
+            nearestAngle = currentAngle;
+        }
+
+        return nearest;
     }
 
     @Deprecated(forRemoval = true)
@@ -133,21 +137,25 @@ public class SeekTool {
 
     @Deprecated(forRemoval = true)
     public static List<Entity> seekCustomSizeEntities(Entity entity, Level level, double seekRange, double seekAngle, double size, boolean checkOnGround) {
-        return StreamSupport.stream(EntityFindUtil.getEntities(level).getAll().spliterator(), false)
-                .filter(e -> {
-                    if (e.distanceTo(entity) <= seekRange && calculateAngle(e, entity) < seekAngle
-                            && e != entity
-                            && e.getBoundingBox().getSize() >= size
-                            && baseFilter(e)
-                            && (!checkOnGround || ON_GROUND_HEIGHT.test(e, 10d))
-                            && smokeFilter(e)
-                            && e.getVehicle() == null
-                            && !friendlyToPlayer(entity, e)) {
-                        return level.clip(new ClipContext(entity.getEyePosition(), e.getEyePosition(),
-                                ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, entity)).getType() != HitResult.Type.BLOCK;
-                    }
-                    return false;
-                }).toList();
+        List<Entity> result = new ArrayList<>();
+
+        for (Entity e : EntityFindUtil.getEntities(level).getAll()) {
+            if (e == entity) continue;
+            if (e.distanceTo(entity) > seekRange) continue;
+            if (calculateAngle(e, entity) >= seekAngle) continue;
+            if (e.getBoundingBox().getSize() < size) continue;
+            if (!baseFilter(e)) continue;
+            if (checkOnGround && !ON_GROUND_HEIGHT.test(e, 10d)) continue;
+            if (!smokeFilter(e)) continue;
+            if (e.getVehicle() != null) continue;
+            if (friendlyToPlayer(entity, e)) continue;
+            if (level.clip(new ClipContext(entity.getEyePosition(), e.getEyePosition(),
+                    ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, entity)).getType() == HitResult.Type.BLOCK) continue;
+
+            result.add(e);
+        }
+
+        return result;
     }
 
     @Deprecated(forRemoval = true)
@@ -182,12 +190,29 @@ public class SeekTool {
     }
 
     public static List<Entity> getEntitiesWithinRange(BlockPos pos, Level level, double range) {
-        return StreamSupport.stream(EntityFindUtil.getEntities(level).getAll().spliterator(), false)
-                .filter(e -> e.distanceToSqr(pos.getX(), pos.getY(), pos.getZ()) <= range * range
-                        && BASIC_FILTER.test(e)
-                        && NOT_IN_SMOKE.test(e)
-                        && !e.getType().is(ModTags.EntityTypes.DECOY))
-                .toList();
+        double rangeSqr = range * range;
+        List<Entity> result = new ArrayList<>();
+
+        for (Entity e : EntityFindUtil.getEntities(level).getAll()) {
+            if (e.distanceToSqr(pos.getX(), pos.getY(), pos.getZ()) > rangeSqr) continue;
+            if (!BASIC_FILTER.test(e)) continue;
+            if (!NOT_IN_SMOKE.test(e)) continue;
+            if (e.getType().is(ModTags.EntityTypes.DECOY)) continue;
+            result.add(e);
+        }
+
+        return result;
+    }
+
+    private static boolean hasNearbySmoke(Entity entity, double range, boolean ignoreSelfSmokeEntity) {
+        var box = entity.getBoundingBox().inflate(range);
+        for (Entity nearby : entity.level().getEntities(EntityTypeTest.forClass(Entity.class), box, candidate -> candidate instanceof SmokeDecoyEntity)) {
+            if (ignoreSelfSmokeEntity && entity instanceof SmokeDecoyEntity && nearby == entity) {
+                continue;
+            }
+            return true;
+        }
+        return false;
     }
 
     private static double calculateAngle(Entity entityA, Entity entityB) {
@@ -346,15 +371,11 @@ public class SeekTool {
      * 判断实体周围是否没有烟雾
      */
     public static final Predicate<Entity> NOT_IN_SMOKE = e -> {
-        var box = e.getBoundingBox().inflate(8);
-        var entities = e.level().getEntities(EntityTypeTest.forClass(Entity.class), box, entity -> entity instanceof SmokeDecoyEntity && !(e instanceof SmokeDecoyEntity)).stream().toList();
-        return entities.isEmpty();
+        return !hasNearbySmoke(e, 8, true);
     };
 
     public static final BiPredicate<Entity, Double> NOT_IN_SMOKE_WITH_RANGE = (e, range) -> {
-        var box = e.getBoundingBox().inflate(range);
-        var entities = e.level().getEntities(EntityTypeTest.forClass(Entity.class), box, entity -> entity instanceof SmokeDecoyEntity).stream().toList();
-        return entities.isEmpty();
+        return !hasNearbySmoke(e, range, false);
     };
 
     /**
@@ -408,40 +429,49 @@ public class SeekTool {
         }
 
         public List<Entity> build() {
-            return getEntityStream()
-                    .filter(e -> {
-                        for (var f : this.filters) {
-                            if (!f.test(e)) return false;
-                        }
-                        return true;
-                    })
-                    .toList();
+            List<Entity> result = new ArrayList<>();
+            for (Entity candidate : getEntityIterable()) {
+                if (matchesAllFilters(candidate)) {
+                    result.add(candidate);
+                }
+            }
+            return result;
         }
 
         @Nullable
         public Entity buildWithClosest() {
-            return getEntityStream()
-                    .filter(e -> {
-                        for (var f : this.filters) {
-                            if (!f.test(e)) return false;
-                        }
-                        return true;
-                    })
-                    .min(Comparator.comparingDouble(e -> calculateAngle(e, entity)))
-                    .orElse(null);
+            Entity closest = null;
+            double closestAngle = Double.MAX_VALUE;
+
+            for (Entity candidate : getEntityIterable()) {
+                if (!matchesAllFilters(candidate)) continue;
+
+                double candidateAngle = calculateAngle(candidate, entity);
+                if (candidateAngle < closestAngle) {
+                    closestAngle = candidateAngle;
+                    closest = candidate;
+                }
+            }
+
+            return closest;
         }
 
         @Nullable
         public Entity buildWithClosest(Vec3 pos, Vec3 vec3) {
-            return getEntityStream()
-                    .filter(e -> {
-                        for (var f : this.filters) {
-                            if (!f.test(e)) return false;
-                        }
-                        return true;
-                    })
-                    .min(Comparator.comparingDouble(e -> calculateAngle(pos, vec3, e)))
-                    .orElse(null);
+            Entity closest = null;
+            double closestAngle = Double.MAX_VALUE;
+
+            for (Entity candidate : getEntityIterable()) {
+                if (!matchesAllFilters(candidate)) continue;
+
+                double candidateAngle = calculateAngle(pos, vec3, candidate);
+                if (candidateAngle < closestAngle) {
+                    closestAngle = candidateAngle;
+                    closest = candidate;
+                }
+            }
+
+            return closest;
         }
 
         public Builder notItsVehicle() {
@@ -603,12 +633,21 @@ public class SeekTool {
             return this;
         }
 
-        private Stream<Entity> getEntityStream() {
+        private boolean matchesAllFilters(Entity candidate) {
+            for (var f : this.filters) {
+                if (!f.test(candidate)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private Iterable<Entity> getEntityIterable() {
             if (this.searchBox != null) {
-                return this.entity.level().getEntities(this.entity, this.searchBox, e -> true).stream();
+                return this.entity.level().getEntities(this.entity, this.searchBox, e -> true);
             }
 
-            return StreamSupport.stream(EntityFindUtil.getEntities(entity.level()).getAll().spliterator(), false);
+            return EntityFindUtil.getEntities(entity.level()).getAll();
         }
     }
 }

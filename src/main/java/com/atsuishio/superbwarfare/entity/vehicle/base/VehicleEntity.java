@@ -189,8 +189,30 @@ public abstract class VehicleEntity extends Entity implements VehiclePropertyMod
 
     public Map<String, GunData> getGunDataMap() {
         var rawMap = entityData.get(GUN_DATA_MAP);
-        var newMap = new HashMap<String, GunData>();
         var weapons = computed().weapons();
+
+        boolean needsNormalization = rawMap.size() != weapons.size();
+        if (!needsNormalization) {
+            for (var weaponName : weapons.keySet()) {
+                if (!rawMap.containsKey(weaponName)) {
+                    needsNormalization = true;
+                    break;
+                }
+            }
+        }
+
+        if (!needsNormalization) {
+            for (var kv : weapons.entrySet()) {
+                var data = rawMap.get(kv.getKey());
+                if (data != null) {
+                    data.defaultDataSupplier = kv::getValue;
+                }
+            }
+
+            return rawMap;
+        }
+
+        var normalizedMap = new HashMap<String, GunData>(weapons.size());
 
         for (var kv : weapons.entrySet()) {
             var data = rawMap.get(kv.getKey());
@@ -200,10 +222,11 @@ public abstract class VehicleEntity extends Entity implements VehiclePropertyMod
             }
 
             data.defaultDataSupplier = kv::getValue;
-            newMap.put(kv.getKey(), data);
+            normalizedMap.put(kv.getKey(), data);
         }
 
-        return newMap;
+        entityData.set(GUN_DATA_MAP, normalizedMap, true);
+        return normalizedMap;
     }
 
     public @Nullable SeatInfo getSeat(int seatIndex) {
@@ -322,7 +345,7 @@ public abstract class VehicleEntity extends Entity implements VehiclePropertyMod
         if (name == null) return;
 
         var map = getGunDataMap();
-        var data = getGunData(name);
+        var data = map.get(name);
         if (data == null) return;
 
         data = data.copy();
@@ -1874,9 +1897,10 @@ public abstract class VehicleEntity extends Entity implements VehiclePropertyMod
 
         // 枪数据处理
         if (!this.level().isClientSide) {
-            var newMap = new HashMap<String, GunData>();
+            var gunDataMap = this.getGunDataMap();
+            var newMap = new HashMap<String, GunData>(gunDataMap.size());
 
-            for (var kv : this.getGunDataMap().entrySet()) {
+            for (var kv : gunDataMap.entrySet()) {
                 var newData = kv.getValue().copy();
                 newData.tick(this, true);
                 newMap.put(kv.getKey(), newData);

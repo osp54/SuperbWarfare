@@ -280,11 +280,16 @@ public class AutoAimableEntity extends GeoVehicleEntity implements OwnableEntity
 
     // 防御类载具实体搜寻周围实体
     public Entity seekNearLivingEntity(Vec3 pos, double minAngle, double maxAngle, double minRange, double seekRange, double size) {
+        double minRangeSqr = minRange * minRange;
+        double seekRangeSqr = seekRange * seekRange;
+        Entity nearestTarget = null;
+        double nearestDistanceSqr = Double.MAX_VALUE;
+
         List<Entity> candidates = this.level().getEntities(this, new AABB(pos, pos).inflate(seekRange), target -> {
             if (target == this) return false;
 
             double distanceToSelf = target.distanceToSqr(this);
-            if (distanceToSelf <= minRange * minRange || distanceToSelf > seekRange * seekRange) return false;
+            if (distanceToSelf <= minRangeSqr || distanceToSelf > seekRangeSqr) return false;
 
             if (!canAim(pos, target, minAngle, maxAngle)) return false;
             if (VehicleVecUtils.getSubmergedHeight(target) > target.getBbHeight()) return false;
@@ -296,23 +301,34 @@ public class AutoAimableEntity extends GeoVehicleEntity implements OwnableEntity
                     || basicEnemyFilter(target);
         });
 
-        candidates.sort(Comparator.comparingDouble(e -> e.distanceToSqr(pos)));
-
         for (Entity target : candidates) {
-            var condition = target.distanceToSqr(this) > minRange * minRange
-                    && target.distanceToSqr(this) <= seekRange * seekRange
-                    && canAim(pos, target, minAngle, maxAngle)
-                    && VehicleVecUtils.getSubmergedHeight(target) <= target.getBbHeight()
-                    && checkNoClip(target, pos)
-                    && !(target instanceof Player player && (player.isSpectator() || player.isCreative()))
-                    && ((target instanceof LivingEntity living && living instanceof Enemy && living.getHealth() > 0) || isThreateningEntity(target, size, pos) || basicEnemyFilter(target))
-                    && SeekTool.NOT_IN_SMOKE.test(target)
-                    && !SeekTool.IN_BLACKLIST.test(target);
-            if (condition) {
-                return target;
+            double distanceToSelf = target.distanceToSqr(this);
+            if (distanceToSelf <= minRangeSqr || distanceToSelf > seekRangeSqr) continue;
+            if (!canAim(pos, target, minAngle, maxAngle)) continue;
+            if (VehicleVecUtils.getSubmergedHeight(target) > target.getBbHeight()) continue;
+            if (target instanceof Player player && (player.isSpectator() || player.isCreative())) continue;
+            if (SeekTool.IN_BLACKLIST.test(target)) continue;
+
+            boolean threateningProjectile = !target.onGround()
+                    && target instanceof Projectile projectile
+                    && !(target instanceof SmallCannonShellEntity)
+                    && (target.getBbWidth() >= size || target.getBbHeight() >= size)
+                    && basicEnemyProjectileFilter(projectile);
+
+            boolean validTarget = (target instanceof LivingEntity living && target instanceof Enemy && living.getHealth() > 0)
+                    || threateningProjectile
+                    || basicEnemyFilter(target);
+            if (!validTarget) continue;
+            if (!checkNoClip(target, pos)) continue;
+            if (!SeekTool.NOT_IN_SMOKE.test(target)) continue;
+
+            double distanceToPos = target.distanceToSqr(pos);
+            if (distanceToPos < nearestDistanceSqr) {
+                nearestDistanceSqr = distanceToPos;
+                nearestTarget = target;
             }
         }
-        return null;
+        return nearestTarget;
     }
 
     // 判断具有威胁的弹射物
