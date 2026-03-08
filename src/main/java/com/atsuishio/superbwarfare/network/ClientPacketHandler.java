@@ -25,12 +25,16 @@ import net.minecraftforge.fml.LogicalSide;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 import static com.atsuishio.superbwarfare.event.ClientEventHandler.zoomVehicle;
 
 public class ClientPacketHandler {
+
+    private static final Map<String, Long> SOUND_THROTTLE = new ConcurrentHashMap<>();
 
     public static void handleLivingKillMessage(LivingEntity attacker, Entity target, boolean headshot, ResourceKey<DamageType> damageType, Supplier<NetworkEvent.Context> ctx) {
         if (ctx.get().getDirection().getReceptionSide() == LogicalSide.CLIENT) {
@@ -137,6 +141,14 @@ public class ClientPacketHandler {
             ) return;
 
             SoundEvent sound = SoundEvent.createVariableRangeEvent(message.location());
+
+            long now = System.currentTimeMillis();
+            String soundKey = message.location() + "|" + ((int) message.x()) + "|" + ((int) message.y()) + "|" + ((int) message.z()) + "|" + message.sender();
+            Long lastPlayed = SOUND_THROTTLE.get(soundKey);
+            if (lastPlayed != null && now - lastPlayed < 100L) {
+                return;
+            }
+            SOUND_THROTTLE.put(soundKey, now);
 
             double distance = player.position().distanceTo(new Vec3(message.x(), message.y(), message.z()));
             int time = (int) (distance / 17);

@@ -240,6 +240,9 @@ public class ClientEventHandler {
 
     @Nullable
     public static UUID lastOperatingGunUUID = null;
+    @Nullable
+    private static UUID lastVehicleSeekSource = null;
+    private static int lastVehicleSeekTick = Integer.MIN_VALUE;
 
     protected static short keysCache = 0;
 
@@ -414,7 +417,17 @@ public class ClientEventHandler {
         handleGunMelee(player, stack);
         weaponZooming(stack);
         lockWeaponSeeking(player, stack);
-        vehicleWeaponSeeking(player);
+        if (!(player.getVehicle() instanceof VehicleEntity vehicle)) {
+            lastVehicleSeekSource = null;
+            lastVehicleSeekTick = Integer.MIN_VALUE;
+        } else {
+            UUID vehicleId = vehicle.getUUID();
+            if (!vehicleId.equals(lastVehicleSeekSource) || player.tickCount - lastVehicleSeekTick >= 3) {
+                vehicleWeaponSeeking(player);
+                lastVehicleSeekSource = vehicleId;
+                lastVehicleSeekTick = player.tickCount;
+            }
+        }
     }
 
     public static void lockWeaponSeeking(Player player, ItemStack stack) {
@@ -704,6 +717,7 @@ public class ClientEventHandler {
         seekingEntity = null;
         lockingPos = null;
         VehicleMainWeaponHudOverlay.lock = false;
+        lastVehicleSeekTick = Integer.MIN_VALUE;
         stopVehicleSeekSound(player);
     }
 

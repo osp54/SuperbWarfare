@@ -87,12 +87,16 @@ public class Mod {
 
     private static final Collection<AbstractMap.SimpleEntry<Runnable, Integer>> SERVER_QUEUE = new ConcurrentLinkedQueue<>();
     private static final Collection<AbstractMap.SimpleEntry<Runnable, Integer>> CLIENT_QUEUE = new ConcurrentLinkedQueue<>();
+    private static final int MAX_CLIENT_QUEUE_SIZE = 4096;
 
     public static void queueServerWork(int tick, Runnable action) {
         SERVER_QUEUE.add(new AbstractMap.SimpleEntry<>(action, tick));
     }
 
     public static void queueClientWork(int tick, Runnable action) {
+        if (CLIENT_QUEUE.size() >= MAX_CLIENT_QUEUE_SIZE) {
+            return;
+        }
         CLIENT_QUEUE.add(new AbstractMap.SimpleEntry<>(action, tick));
     }
 
