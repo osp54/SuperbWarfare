@@ -442,12 +442,7 @@ public class ClientEventHandler {
             lastVehicleSeekSource = null;
             lastVehicleSeekTick = Integer.MIN_VALUE;
         } else {
-            UUID vehicleId = vehicle.getUUID();
-            if (!vehicleId.equals(lastVehicleSeekSource) || player.tickCount - lastVehicleSeekTick >= 3) {
-                vehicleWeaponSeeking(player);
-                lastVehicleSeekSource = vehicleId;
-                lastVehicleSeekTick = player.tickCount;
-            }
+            vehicleWeaponSeeking(player);
         }
     }
 
@@ -645,22 +640,29 @@ public class ClientEventHandler {
         // 最小目标碰撞箱大小
         double minTargetSize = seekWeaponInfo.minTargetSize;
 
-        nearestEntityVehicle = new SeekTool.Builder(player)
-                .withinRange(seekRange)
-                .withinAngle(cameraPos, seekVec, seekAngle)
-                .baseFilter()
-                .heightRange(minTargetHeight, maxTargetHeight)
-                .sizeBiggerThan(minTargetSize)
-                .smokeFilter()
-                .noVehicle()
-                .noClip()
-                .notFriendly()
-                .buildWithClosest(cameraPos, seekVec);
+        UUID vehicleId = vehicle.getUUID();
+        boolean shouldRefreshVehicleSeek = !vehicleId.equals(lastVehicleSeekSource) || player.tickCount - lastVehicleSeekTick >= 3;
+        if (shouldRefreshVehicleSeek) {
+            nearestEntityVehicle = new SeekTool.Builder(player)
+                    .withinRange(seekRange)
+                    .withinAngle(cameraPos, seekVec, seekAngle)
+                    .baseFilter()
+                    .heightRange(minTargetHeight, maxTargetHeight)
+                    .sizeBiggerThan(minTargetSize)
+                    .smokeFilter()
+                    .noVehicle()
+                    .noClip()
+                    .notFriendly()
+                    .buildWithClosest(cameraPos, seekVec);
 
-        Entity decoy = TraceTool.findLookDecoy(player, cameraPos, seekVec, seekRange);
-        if (decoy != null && decoy.getType().is(ModTags.EntityTypes.DECOY)) {
-            nearestEntityVehicle = decoy;
-            seekFailure(player);
+            Entity decoy = TraceTool.findLookDecoy(player, cameraPos, seekVec, seekRange);
+            if (decoy != null && decoy.getType().is(ModTags.EntityTypes.DECOY)) {
+                nearestEntityVehicle = decoy;
+                seekFailure(player);
+            }
+
+            lastVehicleSeekSource = vehicleId;
+            lastVehicleSeekTick = player.tickCount;
         }
 
         if (seekWeaponInfo.onlyLockBlock) {
@@ -669,10 +671,6 @@ public class ClientEventHandler {
                     ClipContext.Block.VISUAL, ClipContext.Fluid.ANY, player));
             seekingPosVehicle = result.getLocation();
 
-            if (seekingTimeVehicle > lockTime + 2 && !lockOnVehicle) {
-                lockOnVehicle = true;
-            }
-
             // 锁定失败
             if (lockingPosVehicle != null && (VectorTool.calculateAngle(seekVec, cameraPos.vectorTo(lockingPosVehicle)) > seekAngle || !noClip(player, lockingPosVehicle))) {
                 seekFailure(player);
@@ -680,9 +678,16 @@ public class ClientEventHandler {
 
             if (ModKeyMappings.VEHICLE_SEEK.isDown()) {
                 if (seekingPosVehicle != null && seekingPosVehicle.distanceToSqr(cameraPos) < seekRangeSqr) {
+                    int previousSeekingTime = seekingTimeVehicle;
                     seekingTimeVehicle++;
-                    if (seekingTimeVehicle == 1) {
+                    if (previousSeekingTime < 2 && seekingTimeVehicle >= 2) {
+                        playLockingSound(data, player);
+                    }
+                    if (previousSeekingTime == 0) {
                         lockingPosVehicle = seekingPosVehicle;
+                    }
+                    if (seekingTimeVehicle > lockTime + 2 && !lockOnVehicle) {
+                        lockOnVehicle = true;
                     }
                 } else {
                     seekFailure(player);
@@ -692,17 +697,20 @@ public class ClientEventHandler {
             }
         } else if (seekWeaponInfo.onlyLockEntity) {
             // 锁定实体
-            if (seekingTimeVehicle > lockTime + 2 && !lockOnVehicle) {
-                lockingEntityVehicle = seekingEntityVehicle;
-                lockOnVehicle = true;
-            }
-
             if (ModKeyMappings.VEHICLE_SEEK.isDown()) {
                 if (seekingEntityVehicle == null) {
                     seekingEntityVehicle = nearestEntityVehicle;
                 }
                 if (nearestEntityVehicle != null && lockingPosVehicle == null) {
+                    int previousSeekingTime = seekingTimeVehicle;
                     seekingTimeVehicle++;
+                    if (previousSeekingTime < 2 && seekingTimeVehicle >= 2) {
+                        playLockingSound(data, player);
+                    }
+                    if (seekingTimeVehicle > lockTime + 2 && !lockOnVehicle) {
+                        lockingEntityVehicle = seekingEntityVehicle;
+                        lockOnVehicle = true;
+                    }
                     if ((!seekingEntityVehicle.getPassengers().isEmpty() || seekingEntityVehicle instanceof VehicleEntity) && player.tickCount % 3 == 0 && !lockOnVehicle) {
                         sendSeekingWarning(player, false, seekingEntityVehicle);
                     }
@@ -722,10 +730,6 @@ public class ClientEventHandler {
 
         if (lockingEntityVehicle != null && !lockingEntityVehicle.isAlive()) {
             seekFailure(player);
-        }
-
-        if (seekingTimeVehicle == 2) {
-            playLockingSound(data, player);
         }
 
         if (seekingTimeVehicle > lockTime) {
@@ -748,6 +752,7 @@ public class ClientEventHandler {
         seekingEntity = null;
         lockingPos = null;
         VehicleMainWeaponHudOverlay.lock = false;
+        lastVehicleSeekSource = null;
         lastVehicleSeekTick = Integer.MIN_VALUE;
         lastSeekingWarningUuid = null;
         lastSeekingWarningLocked = false;
@@ -1246,7 +1251,7 @@ public class ClientEventHandler {
                 shakePos[2] = z * shakeStrength;
                 shakeType = 2 * (Math.random() - 0.5);
             } else {
-                Mod.queueClientWork(time2, () -> {
+                Mod.queueClientEffectWork(time2, () -> {
                     float shakeStrength = (float) DisplayConfig.EXPLOSION_SCREEN_SHAKE.get() / 100.0f;
                     if (shakeStrength <= 0.0f) return;
                     shakeTime = time;
@@ -1316,7 +1321,7 @@ public class ClientEventHandler {
                 ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player));
         double shooterHeight = eyePos.distanceTo(Vec3.atLowerCornerOf(floorHit.getBlockPos()));
 
-        Mod.queueClientWork((int) (1 + 1.5 * shooterHeight), () -> {
+        Mod.queueClientEffectWork((int) (1 + 1.5 * shooterHeight), () -> {
             if (GunResource.compute(stack).ejectShell) {
                 if (data.selectedAmmoConsumer().type == AmmoConsumer.AmmoConsumeType.PLAYER_AMMO) {
                     var ammoType = data.selectedAmmoConsumer().getPlayerAmmoType();

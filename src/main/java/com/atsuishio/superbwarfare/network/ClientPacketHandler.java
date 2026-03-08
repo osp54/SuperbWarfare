@@ -156,7 +156,7 @@ public class ClientPacketHandler {
             if (time == 0) {
                 player.level().playSound(player, message.x(), message.y(), message.z(), sound, SoundSource.BLOCKS, message.radius(), message.pitch());
             } else {
-                Mod.queueClientWork(time,
+                Mod.queueClientEffectWork(time,
                         () -> player.level().playSound(player, message.x(), message.y(), message.z(), sound, SoundSource.BLOCKS, message.radius(), message.pitch()));
             }
         }

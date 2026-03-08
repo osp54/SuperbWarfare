@@ -86,7 +86,9 @@ public class Mod {
 
     private static final ConcurrentLinkedQueue<AbstractMap.SimpleEntry<Runnable, Integer>> SERVER_QUEUE = new ConcurrentLinkedQueue<>();
     private static final ConcurrentLinkedQueue<AbstractMap.SimpleEntry<Runnable, Integer>> CLIENT_QUEUE = new ConcurrentLinkedQueue<>();
+    private static final ConcurrentLinkedQueue<AbstractMap.SimpleEntry<Runnable, Integer>> CLIENT_EFFECT_QUEUE = new ConcurrentLinkedQueue<>();
     private static final int MAX_CLIENT_QUEUE_SIZE = 4096;
+    private static final int MAX_CLIENT_EFFECT_QUEUE_SIZE = 8192;
 
     public static void queueServerWork(int tick, Runnable action) {
         SERVER_QUEUE.add(new AbstractMap.SimpleEntry<>(action, tick));
@@ -97,6 +99,13 @@ public class Mod {
             return;
         }
         CLIENT_QUEUE.add(new AbstractMap.SimpleEntry<>(action, tick));
+    }
+
+    public static void queueClientEffectWork(int tick, Runnable action) {
+        if (CLIENT_EFFECT_QUEUE.size() >= MAX_CLIENT_EFFECT_QUEUE_SIZE) {
+            return;
+        }
+        CLIENT_EFFECT_QUEUE.add(new AbstractMap.SimpleEntry<>(action, tick));
     }
 
     @SubscribeEvent
@@ -110,6 +119,7 @@ public class Mod {
     public void tick(TickEvent.ClientTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             processQueue(CLIENT_QUEUE);
+            processQueue(CLIENT_EFFECT_QUEUE);
         }
     }
 
