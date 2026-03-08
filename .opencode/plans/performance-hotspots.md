@@ -164,7 +164,7 @@ Find the hottest runtime paths and the biggest sources of allocation / RAM churn
 ### Pass 1: Biggest server win
 1. [x] Optimize `VehicleEntity.baseTick()`
 2. [x] Stop rebuilding `GUN_DATA_MAP` every tick
-3. [ ] Introduce dirty-sync strategy for gun state
+3. [x] Introduce dirty-sync strategy for gun state
 
 ### Pass 2: Autonomous targeting
 1. [x] Rewrite `AutoAimableEntity.seekNearLivingEntity(...)`

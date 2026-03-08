@@ -1899,13 +1899,22 @@ public abstract class VehicleEntity extends Entity implements VehiclePropertyMod
         if (!this.level().isClientSide) {
             var gunDataMap = this.getGunDataMap();
             var newMap = new HashMap<String, GunData>(gunDataMap.size());
+            boolean gunDataDirty = false;
 
             for (var kv : gunDataMap.entrySet()) {
+                var oldData = kv.getValue();
                 var newData = kv.getValue().copy();
                 newData.tick(this, true);
                 newMap.put(kv.getKey(), newData);
+
+                if (!gunDataDirty && !newData.equals(oldData)) {
+                    gunDataDirty = true;
+                }
             }
-            entityData.set(GUN_DATA_MAP, newMap, true);
+
+            if (gunDataDirty) {
+                entityData.set(GUN_DATA_MAP, newMap, true);
+            }
         }
 
         this.wasEngineRunning = this.engineRunning();
