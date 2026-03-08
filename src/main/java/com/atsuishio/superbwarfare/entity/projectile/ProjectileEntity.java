@@ -138,6 +138,11 @@ public class ProjectileEntity extends Projectile implements GeoEntity, CustomSyn
 
     @Nullable
     protected EntityResult findEntityOnPath(Vec3 startVec, Vec3 endVec) {
+        return findEntityOnPath(startVec, endVec, entity -> true);
+    }
+
+    @Nullable
+    protected EntityResult findEntityOnPath(Vec3 startVec, Vec3 endVec, Predicate<Entity> filter) {
         Vec3 hitVec = null;
         Entity hitEntity = null;
         boolean headshot = false;
@@ -149,12 +154,13 @@ public class ProjectileEntity extends Projectile implements GeoEntity, CustomSyn
                                 .inflate(this.beast ? 3 : 1),
                         PROJECTILE_TARGETS
                 );
-        double closestDistance = Double.MAX_VALUE;
+        double closestDistanceSqr = Double.MAX_VALUE;
 
         for (Entity entity : entities) {
             if (entity.equals(this.shooter) || this.shooter != null && entity.equals(this.shooter.getVehicle()))
                 continue;
             if (this.shooter != null && entity.getRootVehicle() == this.shooter.getRootVehicle()) continue;
+            if (!filter.test(entity)) continue;
 
             if (entity instanceof TargetEntity && entity.getEntityData().get(TargetEntity.DOWN_TIME) > 0) continue;
             if (entity instanceof DPSGeneratorEntity && entity.getEntityData().get(DPSGeneratorEntity.DOWN_TIME) > 0)
@@ -166,11 +172,11 @@ public class ProjectileEntity extends Projectile implements GeoEntity, CustomSyn
             Vec3 hitPos = result.getHitPos();
             if (hitPos == null) continue;
 
-            double distanceToHit = startVec.distanceTo(hitPos);
-            if (distanceToHit < closestDistance) {
+            double distanceToHitSqr = startVec.distanceToSqr(hitPos);
+            if (distanceToHitSqr < closestDistanceSqr) {
                 hitVec = hitPos;
                 hitEntity = entity;
-                closestDistance = distanceToHit;
+                closestDistanceSqr = distanceToHitSqr;
                 headshot = result.isHeadshot();
                 legShot = result.isLegShot();
             }
@@ -180,7 +186,6 @@ public class ProjectileEntity extends Projectile implements GeoEntity, CustomSyn
 
     @Nullable
     protected List<EntityResult> findEntitiesOnPath(Vec3 startVec, Vec3 endVec) {
-        List<EntityResult> hitEntities = new ArrayList<>();
         List<Entity> entities = this.level().getEntities(
                 this,
                 this.getBoundingBox()
@@ -188,6 +193,7 @@ public class ProjectileEntity extends Projectile implements GeoEntity, CustomSyn
                         .inflate(1),
                 PROJECTILE_TARGETS
         );
+        List<EntityResult> hitEntities = new ArrayList<>(entities.size());
         for (Entity entity : entities) {
             if (this.shooter == null || entity != shooter && entity != this.shooter.getVehicle()) {
                 EntityResult result = this.getHitResult(entity, startVec, endVec);
@@ -307,37 +313,47 @@ public class ProjectileEntity extends Projectile implements GeoEntity, CustomSyn
                 endVec = result.getLocation();
             }
 
-            List<EntityResult> entityResults = new ArrayList<>();
-            var temp = findEntitiesOnPath(startVec, endVec);
-            if (temp != null) entityResults.addAll(temp);
-
-            if (this.shooter != null) {
-                entityResults.sort(Comparator.comparingDouble(e -> e.getHitPos().distanceTo(this.shooter.position())));
-            }
-
-            for (EntityResult entityResult : entityResults) {
-                result = new ExtendedEntityRayTraceResult(entityResult);
-                if (((EntityHitResult) result).getEntity() instanceof Player player) {
-                    if (this.shooter instanceof Player p && !p.canHarmPlayer(player)) {
-                        result = null;
-                    }
-                }
-                if (result != null) {
+            if (!this.beast && this.bypassArmorRate < 1.0F) {
+                EntityResult entityResult = findEntityOnPath(startVec, endVec, entity -> !(entity instanceof Player player)
+                        || !(this.shooter instanceof Player shooterPlayer)
+                        || shooterPlayer.canHarmPlayer(player));
+                if (entityResult != null) {
+                    result = new ExtendedEntityRayTraceResult(entityResult);
+                    this.onHit(result);
+                } else {
                     this.onHit(result);
                 }
+            } else {
+                List<EntityResult> entityResults = findEntitiesOnPath(startVec, endVec);
 
-                if (!this.beast) {
-                    this.bypassArmorRate -= 0.2F;
-                    if (this.bypassArmorRate < 0.8F) {
-                        if (result != null && !(((EntityHitResult) result).getEntity() instanceof TargetEntity target && target.getEntityData().get(TargetEntity.DOWN_TIME) > 0)
-                                && !(((EntityHitResult) result).getEntity() instanceof DPSGeneratorEntity dpsGeneratorEntity && dpsGeneratorEntity.getEntityData().get(DPSGeneratorEntity.DOWN_TIME) > 0)) {
-                            break;
+                if (this.shooter != null) {
+                    entityResults.sort(Comparator.comparingDouble(e -> e.getHitPos().distanceTo(this.shooter.position())));
+                }
+
+                for (EntityResult entityResult : entityResults) {
+                    result = new ExtendedEntityRayTraceResult(entityResult);
+                    if (((EntityHitResult) result).getEntity() instanceof Player player) {
+                        if (this.shooter instanceof Player p && !p.canHarmPlayer(player)) {
+                            result = null;
+                        }
+                    }
+                    if (result != null) {
+                        this.onHit(result);
+                    }
+
+                    if (!this.beast) {
+                        this.bypassArmorRate -= 0.2F;
+                        if (this.bypassArmorRate < 0.8F) {
+                            if (result != null && !(((EntityHitResult) result).getEntity() instanceof TargetEntity target && target.getEntityData().get(TargetEntity.DOWN_TIME) > 0)
+                                    && !(((EntityHitResult) result).getEntity() instanceof DPSGeneratorEntity dpsGeneratorEntity && dpsGeneratorEntity.getEntityData().get(DPSGeneratorEntity.DOWN_TIME) > 0)) {
+                                break;
+                            }
                         }
                     }
                 }
-            }
-            if (entityResults.isEmpty()) {
-                this.onHit(result);
+                if (entityResults.isEmpty()) {
+                    this.onHit(result);
+                }
             }
 
             this.onHitWater(fluidResult.getLocation(), fluidResult);
