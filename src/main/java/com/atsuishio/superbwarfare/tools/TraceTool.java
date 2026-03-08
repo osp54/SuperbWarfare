@@ -4,6 +4,7 @@ import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
 import com.atsuishio.superbwarfare.init.ModTags;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Projectile;
@@ -212,31 +213,40 @@ public class TraceTool {
     }
 
     public static List<BlockPos> getBlocksAlongRay(Vec3 start, Vec3 direction, double maxDistance) {
-        List<BlockPos> blocks = new ArrayList<>();
+        double step = 0.1;
+        int estimatedSteps = Math.max(1, (int) Math.ceil(maxDistance / step) + 1);
+        List<BlockPos> blocks = new ArrayList<>(estimatedSteps);
 
         // 标准化方向向量
         Vec3 normalizedDir = direction.normalize();
+        double stepX = normalizedDir.x * step;
+        double stepY = normalizedDir.y * step;
+        double stepZ = normalizedDir.z * step;
 
         // DDA算法参数
-        double step = 0.1; // 步长（越小精度越高）
-        double distance = 0;
+        double currentX = start.x;
+        double currentY = start.y;
+        double currentZ = start.z;
+        BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
         BlockPos lastPos = null;
 
-        while (distance <= maxDistance) {
-            Vec3 currentPos = start.add(normalizedDir.scale(distance));
-            BlockPos blockPos = new BlockPos(
-                    (int) Math.floor(currentPos.x),
-                    (int) Math.floor(currentPos.y),
-                    (int) Math.floor(currentPos.z)
+        for (double distance = 0; distance <= maxDistance; distance += step) {
+            mutablePos.set(
+                    Mth.floor(currentX),
+                    Mth.floor(currentY),
+                    Mth.floor(currentZ)
             );
 
             // 避免重复添加同一方块
-            if (lastPos == null || !lastPos.equals(blockPos)) {
+            if (lastPos == null || !lastPos.equals(mutablePos)) {
+                BlockPos blockPos = mutablePos.immutable();
                 blocks.add(blockPos);
                 lastPos = blockPos;
             }
 
-            distance += step;
+            currentX += stepX;
+            currentY += stepY;
+            currentZ += stepZ;
         }
 
         return blocks;
@@ -253,8 +263,6 @@ public class TraceTool {
      * @return 一个包含射线击中的所有实体的列表，以及它们与射线交点的最近距离。
      */
     public static List<RayTraceResultEntity> getEntitiesAlongVector(Level world, Vec3 start, Vec3 direction, double maxDistance, Predicate<Entity> filterPredicate) {
-        List<RayTraceResultEntity> hitEntities = new ArrayList<>();
-
         // 1. 标准化方向向量并计算终点
         Vec3 normalizedDirection = direction.normalize();
         Vec3 end = start.add(normalizedDirection.scale(maxDistance));
@@ -264,6 +272,7 @@ public class TraceTool {
 
         // 3. 获取在这个粗筛AABB内的所有实体。
         List<Entity> entitiesInWorld = world.getEntities((Entity) null, rayBoundingBox, filterPredicate);
+        List<RayTraceResultEntity> hitEntities = new ArrayList<>(entitiesInWorld.size());
 
         // 4. 遍历这些实体，进行精确的射线与碰撞箱相交测试
         for (Entity entity : entitiesInWorld) {
@@ -287,7 +296,9 @@ public class TraceTool {
         }
 
         // 5. 根据距离排序，返回从近到远的列表
-        hitEntities.sort(Comparator.comparingDouble(o -> o.distance));
+        if (hitEntities.size() > 1) {
+            hitEntities.sort(Comparator.comparingDouble(o -> o.distance));
+        }
         return hitEntities;
     }
 

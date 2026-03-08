@@ -162,40 +162,40 @@ Find the hottest runtime paths and the biggest sources of allocation / RAM churn
 ## Optimization Pass Order
 
 ### Pass 1: Biggest server win
-1. Optimize `VehicleEntity.baseTick()`
-2. Stop rebuilding `GUN_DATA_MAP` every tick
-3. Introduce dirty-sync strategy for gun state
+1. [x] Optimize `VehicleEntity.baseTick()`
+2. [x] Stop rebuilding `GUN_DATA_MAP` every tick
+3. [ ] Introduce dirty-sync strategy for gun state
 
 ### Pass 2: Autonomous targeting
-1. Rewrite `AutoAimableEntity.seekNearLivingEntity(...)`
-2. Remove sort and use single-pass nearest selection
-3. Split cheap checks from expensive LOS / smoke / clip checks
-4. Reduce expensive reacquire frequency
+1. [x] Rewrite `AutoAimableEntity.seekNearLivingEntity(...)`
+2. [x] Remove sort and use single-pass nearest selection
+3. [x] Split cheap checks from expensive LOS / smoke / clip checks
+4. [ ] Reduce expensive reacquire frequency
 
 ### Pass 3: Shared seek utility
-1. Rewrite hottest `SeekTool` methods without streams
-2. Replace smoke checks with no-allocation existence checks
-3. Avoid `toList()` when not required
+1. [x] Rewrite hottest `SeekTool` methods without streams
+2. [x] Replace smoke checks with no-allocation existence checks
+3. [x] Avoid `toList()` when not required
 
 ### Pass 4: Projectile scalability
-1. Rewrite projectile hit selection to avoid temporary hit lists
-2. Keep only closest candidate while scanning
-3. Reduce temp objects in `ProjectileEntity.tick()`
+1. [x] Rewrite projectile hit selection to avoid temporary hit lists
+2. [x] Keep only closest candidate while scanning
+3. [x] Reduce temp objects in `ProjectileEntity.tick()`
 
 ### Pass 5: OBB collision path
-1. Minimize conversions in `ProjectileUtilMixin`
-2. Reuse converted start/end vectors
-3. Avoid unnecessary temporary `Vector3d` / `Vec3` creation
+1. [x] Minimize conversions in `ProjectileUtilMixin`
+2. [x] Reuse converted start/end vectors
+3. [x] Avoid unnecessary temporary `Vector3d` / `Vec3` creation
 
 ### Pass 6: Client-side cleanup
-1. Optimize lock-on / seek loops in `ClientEventHandler`
-2. Cache LOS / target validation briefly where safe
-3. Audit packet send frequency for lock warnings and movement
+1. [x] Optimize lock-on / seek loops in `ClientEventHandler`
+2. [x] Cache LOS / target validation briefly where safe
+3. [ ] Audit packet send frequency for lock warnings and movement
 
 ### Pass 7: Low-risk micro-optimizations
-1. `Mod` queue tick temporary list cleanup
-2. `TraceTool` ray helpers
-3. smaller vector / collection cleanup across utility classes
+1. [ ] `Mod` queue tick temporary list cleanup
+2. [x] `TraceTool` ray helpers
+3. [x] smaller vector / collection cleanup across utility classes
 
 ## Concrete Refactor Ideas
 
@@ -290,11 +290,11 @@ Before changing code:
 
 ## Suggested Execution Checklist
 
-- [ ] Optimize `VehicleEntity` gun-state churn
-- [ ] Optimize `AutoAimableEntity` nearest-target search
-- [ ] Rewrite hottest `SeekTool` methods without streams
-- [ ] Optimize `ProjectileEntity` closest-hit flow
-- [ ] Reduce allocations in `ProjectileUtilMixin`
-- [ ] Optimize client lock-on tick path
-- [ ] Clean up smaller utility churn
+- [x] Optimize `VehicleEntity` gun-state churn
+- [x] Optimize `AutoAimableEntity` nearest-target search
+- [x] Rewrite hottest `SeekTool` methods without streams
+- [x] Optimize `ProjectileEntity` closest-hit flow
+- [x] Reduce allocations in `ProjectileUtilMixin`
+- [x] Optimize client lock-on tick path
+- [x] Clean up smaller utility churn
 - [ ] Re-profile and compare before/after
