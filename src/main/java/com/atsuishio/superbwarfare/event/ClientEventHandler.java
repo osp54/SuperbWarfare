@@ -145,6 +145,7 @@ public class ClientEventHandler {
     public static double artilleryIndicatorCustomZoom = 0;
     public static MillisTimer clientTimer = new MillisTimer();
     public static MillisTimer clientTimerVehicle = new MillisTimer();
+    private static final RandomSource EFFECT_RANDOM = RandomSource.create();
 
     // 正在按住开火键
     public static boolean holdingFireKey = false;
@@ -432,14 +433,18 @@ public class ClientEventHandler {
 
     public static void lockWeaponSeeking(Player player, ItemStack stack) {
         if (stack.getItem() instanceof GunItem) {
+            Minecraft minecraft = Minecraft.getInstance();
             var data = GunData.from(stack);
             var computed = data.compute();
             int lockTime = computed.seekTime;
             //搜寻角度
-            float fovAdjust = (float) Minecraft.getInstance().options.fov().get() / 80;
+            float fovAdjust = (float) minecraft.options.fov().get() / 80;
             float seekAngle = (float) (computed.seekAngle * fovAdjust);
             double range = computed.seekRange;
-            Vec3 cameraPos = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+            double rangeSqr = range * range;
+            Vec3 eyePos = player.getEyePosition();
+            Vec3 viewVec = player.getViewVector(1);
+            Vec3 cameraPos = minecraft.gameRenderer.getMainCamera().getPosition();
 
             if (zoomTime > 0.7) {
                 nearestEntity = new SeekTool.Builder(player)
@@ -452,7 +457,7 @@ public class ClientEventHandler {
                         .noClip()
                         .buildWithClosest();
 
-                Entity decoy = TraceTool.findLookDecoy(player, cameraPos, player.getViewVector(1), range);
+                Entity decoy = TraceTool.findLookDecoy(player, cameraPos, viewVec, range);
                 if (decoy != null && decoy.getType().is(ModTags.EntityTypes.DECOY)) {
                     nearestEntity = decoy;
                     seekFailure(player);
@@ -461,7 +466,7 @@ public class ClientEventHandler {
                 if (computed.seekType == SeekType.HOLD_FIRE) {
                     if (nearestEntity == null || player.isShiftKeyDown()) {
                         // 锁定方块
-                        BlockHitResult result = player.level().clip(new ClipContext(player.getEyePosition(), player.getEyePosition().add(player.getViewVector(1).scale(512)),
+                        BlockHitResult result = player.level().clip(new ClipContext(eyePos, eyePos.add(viewVec.scale(512)),
                                 ClipContext.Block.VISUAL, ClipContext.Fluid.ANY, player));
                         seekingPos = result.getLocation();
 
@@ -470,13 +475,13 @@ public class ClientEventHandler {
                         }
 
                         //锁定失败
-                        if (lockingPos != null && (VectorTool.calculateAngle(player.getLookAngle(), player.getEyePosition().vectorTo(lockingPos)) > seekAngle || !noClip(player, lockingPos))) {
+                        if (lockingPos != null && (VectorTool.calculateAngle(viewVec, eyePos.vectorTo(lockingPos)) > seekAngle || !noClip(player, lockingPos))) {
                             seekingTime = 0;
                             seekFailure(player);
                         }
 
                         if (holdingFireKey) {
-                            if (seekingPos != null && seekingPos.distanceToSqr(player.getEyePosition()) < range * range) {
+                            if (seekingPos != null && seekingPos.distanceToSqr(eyePos) < rangeSqr) {
                                 seekingTime++;
                                 if (seekingTime == 1) {
                                     lockingPos = seekingPos;
@@ -497,6 +502,8 @@ public class ClientEventHandler {
                         }
 
                     } else {
+                        Vec3 seekingEntityCenter = seekingEntity == null ? null : VectorTool.lerpGetEntityBoundingBoxCenter(seekingEntity, 1);
+
                         // 锁定实体
                         if (seekingTime > lockTime + 2 && !lockOn) {
                             lockingEntity = seekingEntity;
@@ -504,7 +511,7 @@ public class ClientEventHandler {
                         }
 
                         //锁定失败
-                        if (seekingEntity != null && (VectorTool.calculateAngle(player.getLookAngle(), player.getEyePosition().vectorTo(VectorTool.lerpGetEntityBoundingBoxCenter(seekingEntity, 1))) > seekAngle
+                        if (seekingEntity != null && (VectorTool.calculateAngle(viewVec, eyePos.vectorTo(seekingEntityCenter)) > seekAngle
                                 || !SeekTool.NOT_IN_SMOKE.test(seekingEntity)
                                 || !noClip(player, seekingEntity))) {
                             seekFailure(player);
@@ -532,6 +539,8 @@ public class ClientEventHandler {
                         }
                     }
                 } else if (computed.seekType == SeekType.HOLD_ZOOM) {
+                    Vec3 seekingEntityCenter = seekingEntity == null ? null : VectorTool.lerpGetEntityBoundingBoxCenter(seekingEntity, 1);
+
                     // 瞄准锁定只能锁实体
                     if (seekingTime > lockTime + 2 && !lockOn) {
                         lockingEntity = seekingEntity;
@@ -539,7 +548,7 @@ public class ClientEventHandler {
                     }
 
                     // 锁定失败
-                    if (seekingEntity != null && (VectorTool.calculateAngle(player.getLookAngle(), player.getEyePosition().vectorTo(VectorTool.lerpGetEntityBoundingBoxCenter(seekingEntity, 1))) > seekAngle
+                    if (seekingEntity != null && (VectorTool.calculateAngle(viewVec, eyePos.vectorTo(seekingEntityCenter)) > seekAngle
                             || !SeekTool.NOT_IN_SMOKE.test(seekingEntity)
                             || !noClip(player, seekingEntity))) {
                         seekFailure(player);
@@ -604,6 +613,7 @@ public class ClientEventHandler {
         float seekAngle = (float) seekWeaponInfo.seekAngle;
         // 搜索范围
         double seekRange = seekWeaponInfo.seekRange;
+        double seekRangeSqr = seekRange * seekRange;
         // 视角位置
         Vec3 cameraPos = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
         // 搜寻方向
@@ -649,7 +659,7 @@ public class ClientEventHandler {
             }
 
             if (ModKeyMappings.VEHICLE_SEEK.isDown()) {
-                if (seekingPosVehicle != null && seekingPosVehicle.distanceToSqr(cameraPos) < seekRange * seekRange) {
+                if (seekingPosVehicle != null && seekingPosVehicle.distanceToSqr(cameraPos) < seekRangeSqr) {
                     seekingTimeVehicle++;
                     if (seekingTimeVehicle == 1) {
                         lockingPosVehicle = seekingPosVehicle;
@@ -683,7 +693,8 @@ public class ClientEventHandler {
         }
 
         // 锁定失败
-        if (seekingEntityVehicle != null && (VectorTool.calculateAngle(seekVec, cameraPos.vectorTo(VectorTool.lerpGetEntityBoundingBoxCenter(seekingEntityVehicle, 1))) > seekAngle
+        Vec3 seekingEntityVehicleCenter = seekingEntityVehicle == null ? null : VectorTool.lerpGetEntityBoundingBoxCenter(seekingEntityVehicle, 1);
+        if (seekingEntityVehicle != null && (VectorTool.calculateAngle(seekVec, cameraPos.vectorTo(seekingEntityVehicleCenter)) > seekAngle
                 || !SeekTool.NOT_IN_SMOKE.test(seekingEntityVehicle)
                 || !noClip(player, seekingEntityVehicle))) {
             seekFailure(player);
@@ -876,20 +887,21 @@ public class ClientEventHandler {
     public static void handleGunMelee(Player player, ItemStack stack) {
         if (stack.getItem() instanceof GunItem gunItem) {
             var data = GunData.from(stack);
+            var computed = data.compute();
             if (gunItem.hasMeleeAttack(data) && gunMelee == 0 && drawTime < 0.01
                     && (ModKeyMappings.MELEE.isDown() || (data.meleeOnly() && holdingFireKey))
                     && !(player.getVehicle() instanceof VehicleEntity vehicle && vehicle.banHand(player))
                     && !holdFireVehicle
                     && !notInGame()
                     && !isEditing
-                    && !(GunData.from(stack).reload.normal() || GunData.from(stack).reload.empty())
+                    && !(data.reload.normal() || data.reload.empty())
                     && !data.reloading()
                     && !data.charging() && !player.getCooldowns().isOnCooldown(stack.getItem())
             ) {
-                gunMelee = data.compute().meleeDuration;
+                gunMelee = computed.meleeDuration;
                 fireCooldown = gunMelee + 4;
             }
-            if (gunMelee == data.compute().meleeDuration - data.compute().meleeDamageTime) {
+            if (gunMelee == computed.meleeDuration - computed.meleeDamageTime) {
                 doGunMeleeAttack(player);
             }
         }
@@ -916,11 +928,14 @@ public class ClientEventHandler {
 
         if (stack.is(ModItems.LUNGE_MINE.get()) && ((lungeAttack >= 9 && lungeAttack <= 10.5) || lungeSprint > 0)) {
             Entity lookingEntity = TraceTool.findLookingEntity(player, player.getEntityReach() + 1.5);
+            Vec3 eyePos = player.getEyePosition();
+            Vec3 lookVec = player.getLookAngle();
+            double blockReach = player.getBlockReach() + 0.5;
 
-            BlockHitResult result = player.level().clip(new ClipContext(player.getEyePosition(), player.getEyePosition().add(player.getLookAngle().scale(player.getBlockReach() + 0.5)),
+            BlockHitResult result = player.level().clip(new ClipContext(eyePos, eyePos.add(lookVec.scale(blockReach)),
                     ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player));
 
-            Vec3 looking = Vec3.atLowerCornerOf(player.level().clip(new ClipContext(player.getEyePosition(), player.getEyePosition().add(player.getLookAngle().scale(player.getBlockReach() + 0.5)), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player)).getBlockPos());
+            Vec3 looking = Vec3.atLowerCornerOf(result.getBlockPos());
             BlockState blockState = player.level().getBlockState(BlockPos.containing(looking.x(), looking.y(), looking.z()));
 
             if (lookingEntity != null) {
@@ -1273,8 +1288,10 @@ public class ClientEventHandler {
             player.playSound(fire1p, 4f, (float) ((2 * Math.random() - 1) * 0.05f + pitch));
         }
 
-        double shooterHeight = player.getEyePosition().distanceTo((Vec3.atLowerCornerOf(player.level().clip(new ClipContext(player.getEyePosition(), player.getEyePosition().add(new Vec3(0, -1, 0).scale(10)),
-                ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player)).getBlockPos())));
+        Vec3 eyePos = player.getEyePosition();
+        BlockHitResult floorHit = player.level().clip(new ClipContext(eyePos, eyePos.add(0, -10, 0),
+                ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player));
+        double shooterHeight = eyePos.distanceTo(Vec3.atLowerCornerOf(floorHit.getBlockPos()));
 
         Mod.queueClientWork((int) (1 + 1.5 * shooterHeight), () -> {
             if (GunResource.compute(stack).ejectShell) {
@@ -1362,7 +1379,8 @@ public class ClientEventHandler {
         if (gunData == null) return;
 
         var soundInfo = gunData.compute().soundInfo;
-        float pitch = vehicle.getWeaponHeat(player) <= 60 ? 1 : (float) (1 - 0.011 * java.lang.Math.abs(60 - vehicle.getWeaponHeat(player)));
+        float weaponHeat = vehicle.getWeaponHeat(player);
+        float pitch = weaponHeat <= 60 ? 1 : (float) (1 - 0.011 * java.lang.Math.abs(60 - weaponHeat));
 
         var sound = soundInfo.fire1P;
         if (sound != null) {
@@ -1392,8 +1410,7 @@ public class ClientEventHandler {
             pose = 1;
         }
 
-        int stockType = GunData.from(stack).attachment.get(AttachmentType.STOCK);
-
+        int stockType = data.attachment.get(AttachmentType.STOCK);
         double sway = switch (stockType) {
             case 1 -> 1;
             case 2 -> 0.55;
@@ -1403,11 +1420,11 @@ public class ClientEventHandler {
         float customWeight = (float) Mth.clamp(data.compute().weight, 1, 30);
 
         if (!breath && zoom) {
-            float newPitch = (float) (player.getXRot() - 0.01f * Mth.sin((float) (0.03 * player.tickCount)) * pose * Mth.nextDouble(RandomSource.create(), 0.1, 1) * times * sway * (1 - 0.03 * customWeight));
+            float newPitch = (float) (player.getXRot() - 0.01f * Mth.sin((float) (0.03 * player.tickCount)) * pose * Mth.nextDouble(EFFECT_RANDOM, 0.1, 1) * times * sway * (1 - 0.03 * customWeight));
             player.setXRot(newPitch);
             player.xRotO = player.getXRot();
 
-            float newYaw = (float) (player.getYRot() - 0.005f * Mth.cos((float) (0.025 * (player.tickCount + 2 * Math.PI))) * pose * Mth.nextDouble(RandomSource.create(), 0.05, 1.25) * times * sway * (1 - 0.03 * customWeight));
+            float newYaw = (float) (player.getYRot() - 0.005f * Mth.cos((float) (0.025 * (player.tickCount + 2 * Math.PI))) * pose * Mth.nextDouble(EFFECT_RANDOM, 0.05, 1.25) * times * sway * (1 - 0.03 * customWeight));
             player.setYRot(newYaw);
             player.yRotO = player.getYRot();
         }
@@ -1955,9 +1972,9 @@ public class ClientEventHandler {
             float shakeStrength = (float) DisplayConfig.SHOCK_SCREEN_SHAKE.get() / 100.0f;
             if (shakeStrength <= 0.0f) return;
             event.setYaw(Minecraft.getInstance().gameRenderer.getMainCamera().getYRot() +
-                    (float) Mth.nextDouble(RandomSource.create(), -3, 3) * shakeStrength);
+                    (float) Mth.nextDouble(EFFECT_RANDOM, -3, 3) * shakeStrength);
             event.setPitch(Minecraft.getInstance().gameRenderer.getMainCamera().getXRot() +
-                    (float) Mth.nextDouble(RandomSource.create(), -3, 3) * shakeStrength);
+                    (float) Mth.nextDouble(EFFECT_RANDOM, -3, 3) * shakeStrength);
         }
     }
 
