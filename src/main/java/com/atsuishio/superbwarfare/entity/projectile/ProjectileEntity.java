@@ -215,8 +215,10 @@ public class ProjectileEntity extends Projectile implements GeoEntity, CustomSyn
 
         Vec3 hitPos = null;
         if (entity instanceof OBBEntity obbEntity && !obbEntity.enableAABB()) {
+            var startVec3d = OBB.vec3ToVector3d(startVec);
+            var endVec3d = OBB.vec3ToVector3d(endVec);
             for (OBB obb : obbEntity.getOBBs()) {
-                var obbVec = obb.clip(OBB.vec3ToVector3d(startVec), OBB.vec3ToVector3d(endVec)).orElse(null);
+                var obbVec = obb.clip(startVec3d, endVec3d).orElse(null);
                 if (obbVec != null) {
                     hitPos = OBB.vector3dToVec3(obbVec);
                     if (this.level() instanceof ServerLevel serverLevel) {
@@ -231,28 +233,34 @@ public class ProjectileEntity extends Projectile implements GeoEntity, CustomSyn
             }
         } else {
             AABB boundingBox = entity.getBoundingBox();
-            Vec3 velocity = new Vec3(entity.getX() - entity.xOld, entity.getY() - entity.yOld, entity.getZ() - entity.zOld);
+            double velocityX = entity.getX() - entity.xOld;
+            double velocityY = entity.getY() - entity.yOld;
+            double velocityZ = entity.getZ() - entity.zOld;
 
             if (entity instanceof ServerPlayer player && this.shooter instanceof ServerPlayer serverPlayerOwner) {
                 int ping = Mth.floor((serverPlayerOwner.latency / 1000.0) * 20.0 + 0.5);
                 boundingBox = HitboxHelper.getBoundingBox(player, ping);
-                velocity = HitboxHelper.getVelocity(player, ping);
+                Vec3 velocity = HitboxHelper.getVelocity(player, ping);
+                velocityX = velocity.x;
+                velocityY = velocity.y;
+                velocityZ = velocity.z;
             }
             boundingBox = boundingBox.expandTowards(0, expandHeight, 0);
-            boundingBox = boundingBox.expandTowards(velocity.x, velocity.y, velocity.z);
+            boundingBox = boundingBox.expandTowards(velocityX, velocityY, velocityZ);
 
             double playerHitboxOffset = 3;
             if (entity instanceof ServerPlayer) {
                 if (entity.getVehicle() != null) {
-                    boundingBox = boundingBox.move(velocity.multiply(playerHitboxOffset / 2, playerHitboxOffset / 2, playerHitboxOffset / 2));
+                    double halfOffset = playerHitboxOffset / 2;
+                    boundingBox = boundingBox.move(velocityX * halfOffset, velocityY * halfOffset, velocityZ * halfOffset);
                 }
-                boundingBox = boundingBox.move(velocity.multiply(playerHitboxOffset, playerHitboxOffset, playerHitboxOffset));
+                boundingBox = boundingBox.move(velocityX * playerHitboxOffset, velocityY * playerHitboxOffset, velocityZ * playerHitboxOffset);
             }
 
             if (entity.getVehicle() != null) {
-                boundingBox = boundingBox.move(velocity.multiply(-2.5, -2.5, -2.5));
+                boundingBox = boundingBox.move(velocityX * -2.5, velocityY * -2.5, velocityZ * -2.5);
             }
-            boundingBox = boundingBox.move(velocity.multiply(-5, -5, -5));
+            boundingBox = boundingBox.move(velocityX * -5, velocityY * -5, velocityZ * -5);
 
             if (this.beast) {
                 boundingBox = boundingBox.inflate(3);
@@ -265,15 +273,15 @@ public class ProjectileEntity extends Projectile implements GeoEntity, CustomSyn
         if (hitPos == null) {
             return null;
         }
-        Vec3 hitBoxPos = hitPos.subtract(entity.position());
         boolean headshot = false;
         boolean legShot = false;
         float eyeHeight = entity.getEyeHeight();
         float bodyHeight = entity.getBbHeight();
-        if ((eyeHeight - 0.25) < hitBoxPos.y && hitBoxPos.y < (eyeHeight + 0.3) && entity instanceof LivingEntity) {
+        double hitBoxPosY = hitPos.y - entity.getY();
+        if ((eyeHeight - 0.25) < hitBoxPosY && hitBoxPosY < (eyeHeight + 0.3) && entity instanceof LivingEntity) {
             headshot = true;
         }
-        if (hitBoxPos.y < (0.33 * bodyHeight) && entity instanceof LivingEntity) {
+        if (hitBoxPosY < (0.33 * bodyHeight) && entity instanceof LivingEntity) {
             legShot = true;
         }
 
